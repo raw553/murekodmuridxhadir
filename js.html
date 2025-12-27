@@ -1,0 +1,206 @@
+/* =========================================================
+   CONFIG
+   ========================================================= */
+const API = "https://script.google.com/macros/s/AKfycbwSNCyTI57_y7FIVOWi7OrtL19OarpJsU_PSC2ulzn7LH1W1FM9MoKDG1D-I0yFA1yZkg/exec";
+
+let globalRecords = [];
+
+/* =========================================================
+   INIT
+   ========================================================= */
+window.onload = init;
+
+async function init() {
+  setTodayDate();
+  await loadKelas();
+  await loadAlasan();
+  await loadSenarai();
+}
+
+/* =========================================================
+   UTILITIES
+   ========================================================= */
+function setTodayDate() {
+  const d = new Date().toISOString().split("T")[0];
+  const el = qs("tarikh");
+  if (el) el.value = d;
+}
+
+function qs(id) {
+  return document.getElementById(id);
+}
+
+// Kemas kini fungsi toast supaya selari dengan CSS Tailwind baru
+function showToast(msg, isError = false) {
+  const t = qs("toast");
+  const tm = qs("toastMsg");
+  if (!t) return;
+
+  tm.textContent = msg;
+  t.classList.remove("opacity-0", "translate-y-20");
+  t.classList.add("opacity-100", "translate-y-0");
+  
+  if(isError) t.classList.add("bg-red-600");
+  else t.classList.remove("bg-red-600");
+
+  setTimeout(() => {
+    t.classList.add("opacity-0", "translate-y-20");
+    t.classList.remove("opacity-100", "translate-y-0");
+  }, 3000);
+}
+
+function playSound(id) {
+  const a = qs(id);
+  if (a) a.play();
+}
+
+/* =========================================================
+   LOAD DROPDOWNS
+   ========================================================= */
+async function loadKelas() {
+  const res = await fetch(`${API}?action=kelas`);
+  const data = await res.json();
+  const k = qs("kelas");
+  k.innerHTML = "<option value=''>PILIH KELAS</option>";
+  data.forEach(x => (k.innerHTML += `<option>${x}</option>`));
+}
+
+async function loadMurid() {
+  const kelas = qs("kelas").value;
+  const m = qs("murid");
+  if (!kelas) {
+    m.innerHTML = "<option value=''>PILIH NAMA</option>";
+    return;
+  }
+  m.innerHTML = "<option>TUNGGU...</option>";
+  const res = await fetch(`${API}?action=murid&kelas=${encodeURIComponent(kelas)}`);
+  const data = await res.json();
+  m.innerHTML = "<option value=''>PILIH NAMA</option>";
+  data.murid.forEach(x => (m.innerHTML += `<option>${x}</option>`));
+}
+
+async function loadAlasan() {
+  const res = await fetch(`${API}?action=alasan`);
+  const data = await res.json();
+  const a = qs("alasan");
+  a.innerHTML = "<option value=''>PILIH ALASAN</option>";
+  data.forEach(x => (a.innerHTML += `<option>${x}</option>`));
+}
+
+/* =========================================================
+   SUBMIT DATA
+   ========================================================= */
+async function submitForm() {
+  const btn = qs("btn"); // ID ditukar dari btnSubmit ke btn ikut HTML
+  const loader = qs("loading");
+  
+  const payload = {
+    tarikh: qs("tarikh").value,
+    kelas: qs("kelas").value,
+    murid: qs("murid").value,
+    alasan: qs("alasan").value
+  };
+
+  if (!payload.tarikh || !payload.kelas || !payload.murid || !payload.alasan) {
+    showToast("⚠️ Sila lengkapkan maklumat!", true);
+    return;
+  }
+
+  btn.disabled = true;
+  btn.classList.add("opacity-50");
+  loader.classList.remove("hidden");
+
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      body: JSON.stringify({ action: "submit", data: payload })
+    });
+    const result = await res.json();
+
+    if (result === "Duplicate") {
+      showToast("❌ Rekod sudah wujud!", true);
+    } else {
+      playSound("sndSuccess");
+      showToast("✅ Berjaya disimpan!");
+      resetBorang();
+      await loadSenarai();
+    }
+  } catch (e) {
+    showToast("❌ Ralat Pelayan", true);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove("opacity-50");
+    loader.classList.add("hidden");
+  }
+}
+
+function resetBorang(confirmReset = false) {
+  if (confirmReset && !confirm("Kosongkan borang?")) return;
+  qs("murid").innerHTML = "<option value=''>PILIH NAMA</option>";
+  qs("alasan").value = "";
+  qs("mc").value = "";
+  if(qs("fileNameDisplay")) qs("fileNameDisplay").innerText = "Klik di sini untuk muat naik";
+}
+
+/* =========================================================
+   RENDER LIST (MOBILE VIEW)
+   ========================================================= */
+async function loadSenarai() {
+  const res = await fetch(`${API}?action=senarai`);
+  globalRecords = await res.json();
+  renderCards(globalRecords);
+}
+
+function renderCards(data) {
+  const container = qs("senaraiContainer");
+  const countLabel = qs("totalCount");
+  container.innerHTML = "";
+  
+  // Tapis data untuk tarikh hari ini sahaja (optional)
+  const today = qs("tarikh").value;
+  const filtered = data.filter(r => r.tarikh === today);
+  
+  countLabel.innerText = `${filtered.length} MURID`;
+
+  if (filtered.length === 0) {
+    container.innerHTML = `<p class="text-center text-gray-400 italic py-10">Tiada rekod untuk tarikh ini</p>`;
+    return;
+  }
+
+  filtered.forEach((r) => {
+    const card = document.createElement("div");
+    card.className = "bg-white p-4 rounded-2xl shadow-sm border-l-8 border-emerald-500 flex justify-between items-center animate-fast";
+    card.innerHTML = `
+      <div class="flex-1">
+        <h4 class="font-black text-emerald-900 leading-tight uppercase">${r.murid}</h4>
+        <p class="text-[10px] text-emerald-600 font-bold uppercase">${r.kelas} • ${r.alasan}</p>
+      </div>
+      <button onclick="confirmDelete('${r.id}')" class="ml-4 p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+      </button>
+    `;
+    container.appendChild(card);
+  });
+}
+
+/* =========================================================
+   DELETE
+   ========================================================= */
+function confirmDelete(id) {
+  if (!confirm("Padam rekod ini?")) return;
+  executeDelete(id);
+}
+
+async function executeDelete(id) {
+  try {
+    await fetch(API, {
+      method: "POST",
+      body: JSON.stringify({ action: "delete", id })
+    });
+    playSound("sndDelete");
+    showToast("Rekod dipadam", true);
+    loadSenarai();
+  } catch (e) {
+    showToast("Ralat memadam", true);
+  }
+}
