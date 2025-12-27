@@ -146,28 +146,34 @@ function resetBorang(confirmReset = false) {
    RENDER LIST (MOBILE VIEW)
    ========================================================= */
 async function loadSenarai() {
-  const res = await fetch(`${API}?action=senarai`);
-  globalRecords = await res.json();
-  renderCards(globalRecords);
+  const tarikh = qs("tarikh").value;
+  const kelas = qs("kelas").value;
+  
+  // Masukkan parameter tarikh dan kelas ke dalam URL
+  const url = `${API}?action=senarai&tarikh=${tarikh}&kelas=${encodeURIComponent(kelas)}`;
+  
+  try {
+    const res = await fetch(url);
+    globalRecords = await res.json();
+    renderCards(globalRecords);
+  } catch (e) {
+    console.error("Gagal memuatkan senarai:", e);
+  }
 }
-
 function renderCards(data) {
   const container = qs("senaraiContainer");
   const countLabel = qs("totalCount");
   container.innerHTML = "";
   
-  // Tapis data untuk tarikh hari ini sahaja (optional)
-  const today = qs("tarikh").value;
-  const filtered = data.filter(r => r.tarikh === today);
-  
-  countLabel.innerText = `${filtered.length} MURID`;
+  // Data sudah ditapis oleh Apps Script melalui parameter URL tadi
+  countLabel.innerText = `${data.length} MURID`;
 
-  if (filtered.length === 0) {
-    container.innerHTML = `<p class="text-center text-gray-400 italic py-10">Tiada rekod untuk tarikh ini</p>`;
+  if (data.length === 0) {
+    container.innerHTML = `<p class="text-center text-gray-400 italic py-10">Tiada rekod ditemui</p>`;
     return;
   }
 
-  filtered.forEach((r) => {
+  data.forEach((r) => {
     const card = document.createElement("div");
     card.className = "bg-white p-4 rounded-2xl shadow-sm border-l-8 border-emerald-500 flex justify-between items-center animate-fast";
     card.innerHTML = `
@@ -175,7 +181,7 @@ function renderCards(data) {
         <h4 class="font-black text-emerald-900 leading-tight uppercase">${r.murid}</h4>
         <p class="text-[10px] text-emerald-600 font-bold uppercase">${r.kelas} • ${r.alasan}</p>
       </div>
-      <button onclick="confirmDelete('${r.id}')" class="ml-4 p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors">
+      <button onclick="confirmDelete('${r.id}')" class="ml-4 p-2 bg-red-50 text-red-500 rounded-full">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
       </button>
     `;
